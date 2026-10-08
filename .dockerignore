@@ -1,0 +1,15 @@
+.git
+.github
+.vscode
+README.md
+reporte.*
+ec2
+test
+.nyc_output
+node_modules
+coverage
+npm-debug.log*
+.env
+.env.*
+*.pem
+*.key

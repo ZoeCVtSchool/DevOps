@@ -1,0 +1,111 @@
+name: CI/CD API REST
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Pruebas y cobertura
+    runs-on: ubuntu-latest
+    steps:
+      - name: Obtener código
+        uses: actions/checkout@v4
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Instalar dependencias
+        run: npm ci
+      - name: Ejecutar pruebas con umbral de cobertura
+        run: npm test
+
+  publish:
+    name: Construir y publicar imagen
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Obtener código
+        uses: actions/checkout@v4
+      - name: Configurar Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Iniciar sesión en Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Construir y publicar
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/api-ci-cd:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/api-ci-cd:${{ github.sha }}
+
+  deploy:
+    name: Despliegue blue-green en EC2
+    needs: publish
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.ENABLE_EC2_DEPLOY == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Desplegar en EC2
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/api-ci-cd:${{ github.sha }}
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          fingerprint: ${{ secrets.EC2_HOST_FINGERPRINT }}
+          envs: IMAGE
+          script: |
+            set -euo pipefail
+            state_file=/opt/api-ci-cd/active-slot
+            active_slot=$(cat "$state_file" 2>/dev/null || printf 'blue')
+            if [ "$active_slot" = "blue" ]; then
+              target_slot=green
+              target_port=8082
+              previous_container=api-blue
+            else
+              target_slot=blue
+              target_port=8081
+              previous_container=api-green
+            fi
+            target_container="api-$target_slot"
+
+            sudo docker pull "$IMAGE"
+            sudo docker rm -f "$target_container" >/dev/null 2>&1 || true
+            sudo docker run -d --name "$target_container" --restart unless-stopped \
+              -p "127.0.0.1:$target_port:3000" "$IMAGE"
+
+            healthy=0
+            for attempt in $(seq 1 30); do
+              if curl --fail --silent "http://127.0.0.1:$target_port/api/health"; then
+                healthy=1
+                break
+              fi
+              sleep 2
+            done
+            if [ "$healthy" -ne 1 ]; then
+              sudo docker logs "$target_container" || true
+              sudo docker rm -f "$target_container"
+              exit 1
+            fi
+
+            printf 'upstream api_backend {\n    server 127.0.0.1:%s;\n    keepalive 16;\n}\n' \
+              "$target_port" | sudo tee /etc/nginx/conf.d/api-upstream.conf >/dev/null
+            sudo nginx -t
+            sudo systemctl reload nginx
+            sleep 5
+            sudo docker rm -f "$previous_container" >/dev/null 2>&1 || true
+            printf '%s\n' "$target_slot" > "$state_file"

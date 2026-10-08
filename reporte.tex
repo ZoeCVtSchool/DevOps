@@ -1,0 +1,165 @@
+\documentclass[12pt,letterpaper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage[spanish,es-nodecimaldot]{babel}
+\usepackage[letterpaper,margin=2.5cm]{geometry}
+\usepackage{setspace}
+\usepackage{graphicx}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,shapes.geometric,babel}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{hyperref}
+\usepackage{url}
+\usepackage{fancyhdr}
+\usepackage{float}
+\setstretch{1.15}
+\setlength{\parindent}{1.25cm}
+\setlength{\parskip}{0.15em}
+\hypersetup{colorlinks=true,linkcolor=black,urlcolor=blue,citecolor=black}
+\pagestyle{fancy}
+\setlength{\headheight}{15pt}
+\fancyhf{}
+\lhead{Proyecto Integrador: Pipeline CI/CD}
+\rhead{API REST en AWS EC2}
+\cfoot{\thepage}
+\hypersetup{pageanchor=false}
+
+\begin{document}
+\begin{titlepage}
+\centering
+\vspace*{1.2cm}
+{\Large\bfseries [NOMBRE DE LA INSTITUCIÓN]\par}
+\vspace{0.5cm}
+{\large [FACULTAD / PROGRAMA EDUCATIVO]\par}
+\vspace{2cm}
+{\Large\bfseries PROYECTO INTEGRADOR\par}
+\vspace{0.5cm}
+{\LARGE\bfseries Pipeline CI/CD automatizado para API REST con Docker, GitHub Actions y AWS EC2\par}
+\vspace{2cm}
+\begin{flushleft}
+\textbf{Asignatura:} [Nombre de la materia]\\[0.35cm]
+\textbf{Docente:} [Nombre del docente]\\[0.35cm]
+\textbf{Integrantes:} [Nombres completos]\\[0.35cm]
+\textbf{Grupo:} [Grupo]\\
+\end{flushleft}
+\vfill
+{\large [Ciudad, Estado]\par}
+{\large Octubre de 2026\par}
+\end{titlepage}
+
+\hypersetup{pageanchor=true}
+\pagenumbering{roman}
+\tableofcontents
+\newpage
+\pagenumbering{arabic}
+
+\section{Introducción}
+El desarrollo de software actual requiere entregar cambios con frecuencia sin perder control sobre la calidad, la seguridad ni la disponibilidad de los servicios. Cuando la compilación, las pruebas y la publicación se realizan manualmente, cada paso depende de que una persona recuerde ejecutar los comandos correctos y documente sus resultados. Esa dependencia hace más probable que una modificación que funciona en el equipo de desarrollo falle al ejecutarse en otro entorno. La integración continua y la entrega continua, conocidas como CI/CD, responden a este problema mediante procesos repetibles que verifican y distribuyen el software a partir de cambios versionados. En este proyecto se implementa un flujo automatizado para una API REST construida con Node.js y Express, cuya imagen se publica en Docker Hub y puede desplegarse en una instancia Ubuntu de Amazon EC2.
+
+La integración continua comienza con una modificación enviada a la rama principal o propuesta mediante un pull request. GitHub Actions instala las dependencias desde el archivo de bloqueo y ejecuta pruebas automatizadas de integración sobre las rutas HTTP. El proyecto expone diez recursos de ejemplo: usuarios, productos, categorías, pedidos, clientes, proveedores, inventario, carritos, reseñas y pagos. Cada recurso ofrece operaciones para listar, crear, consultar, reemplazar, modificar parcialmente y eliminar registros. En conjunto son sesenta rutas CRUD, además de un endpoint de salud. Las pruebas comprueban tanto los casos exitosos como validaciones de entrada y respuestas para recursos inexistentes. Un umbral de cobertura global del setenta por ciento impide considerar aprobada una ejecución con una proporción menor de código cubierto.
+
+La automatización no termina al probar el código. Una vez aprobadas las pruebas en un push a \texttt{main}, el pipeline construye una imagen Docker y publica en Docker Hub dos etiquetas: \texttt{latest} para la versión más reciente y el SHA completo del commit para identificar de manera inmutable el código asociado. El empaquetado en contenedores reduce diferencias entre la máquina de desarrollo y el servidor, pues agrupa el runtime de Node.js, las dependencias de producción y la aplicación en una unidad reproducible. El \texttt{Dockerfile} usa una imagen base ligera, omite las dependencias de desarrollo y ejecuta el proceso con un usuario sin privilegios de administrador. El archivo \texttt{.dockerignore} limita el contexto de construcción y excluye, entre otros elementos, dependencias locales, archivos de entorno y claves.
+
+La entrega continua hacia la nube se realiza por SSH a una instancia EC2 con Ubuntu. GitHub Secrets almacena el usuario y token de Docker Hub, el host, el usuario de SSH, la clave privada y la huella de la clave de host; de ese modo, los valores confidenciales no se escriben en el código fuente. Nginx escucha en el puerto HTTP público y actúa como proxy inverso hacia uno de dos contenedores de la API, enlazados únicamente a la interfaz local. El despliegue descarga la imagen identificada por el commit, inicia el contenedor inactivo y consulta su endpoint de salud antes de cambiar el upstream de Nginx. Después de validar la nueva versión, recarga el proxy y retira el contenedor anterior. Este patrón blue-green reduce la ventana de interrupción frente a detener primero la versión activa, aunque la disponibilidad final también depende de la salud de la instancia, la red y la configuración de AWS.
+
+El objetivo del trabajo es demostrar un recorrido automatizado, verificable y documentado desde el código fuente hasta una API accesible por HTTP. Para alcanzarlo se preparan endpoints funcionales, pruebas de integración con reporte de cobertura, una imagen de contenedor y un workflow que separa la validación de la publicación y del despliegue. También se documentan las tareas que requieren intervención del equipo: crear el repositorio Docker Hub, aprovisionar la instancia, limitar los puertos mediante el Security Group, registrar secretos de GitHub y habilitar el despliegue. Estas tareas no pueden completarse de forma segura sin las credenciales y decisiones del propietario de la cuenta.
+
+El alcance de la API es académico y deliberadamente explícito: los datos viven en memoria y se pierden cuando el proceso se reinicia, por lo que el servicio demuestra el ciclo CI/CD y las operaciones HTTP, pero no ofrece persistencia ni está destinado a datos reales. Asimismo, la disponibilidad pública de la URL depende de que el equipo cree la instancia y complete la configuración de AWS. El informe distingue los resultados medidos localmente de los resultados en nube que todavía deben obtenerse en la cuenta institucional. Esta separación evita presentar como ejecutados despliegues, capturas o verificaciones que requieren recursos externos.
+
+\section{Objetivos}
+\subsection{Objetivo general}
+Implementar y validar un pipeline CI/CD que pruebe una API REST, publique su imagen versionada en Docker Hub y permita desplegarla de forma blue-green en AWS EC2.
+\subsection{Objetivos específicos}
+\begin{itemize}
+  \item Implementar al menos sesenta operaciones HTTP funcionales distribuidas en recursos CRUD.
+  \item Automatizar pruebas de integración y exigir un mínimo global de 70\% de cobertura.
+  \item Construir una imagen Docker reducida que no incluya dependencias de desarrollo ni secretos.
+  \item Configurar GitHub Actions para probar cambios y publicar las etiquetas \texttt{latest} y SHA en Docker Hub.
+  \item Documentar el aprovisionamiento de EC2, la protección de credenciales y el procedimiento de despliegue.
+\end{itemize}
+
+\section{Arquitectura y procedimiento}
+La API escucha en el puerto 3000 dentro de su contenedor. En EC2, Nginx recibe las peticiones del puerto 80 y las reenvía al puerto local del contenedor activo (8081 o 8082). Los puertos de aplicación no se exponen directamente a Internet. El script de preparación instala Docker y Nginx, configura el proxy y deja establecido el slot inicial. En cada despliegue, Actions usa SSH con verificación de huella, descarga el tag del commit, levanta el slot alternativo, comprueba \texttt{/api/health}, actualiza la configuración y recarga Nginx.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[node distance=1.3cm, every node/.style={draw,rounded corners,align=center,minimum height=0.9cm}, >=Latex]
+\node (client) {Cliente HTTP};
+\node[right=of client] (nginx) {Nginx\\EC2 :80};
+\node[above right=0.9cm and 1.5cm of nginx] (blue) {Contenedor azul\\127.0.0.1:8081};
+\node[below right=0.9cm and 1.5cm of nginx] (green) {Contenedor verde\\127.0.0.1:8082};
+\node[right=2cm of blue] (api1) {API Express\\:3000};
+\node[right=2cm of green] (api2) {API Express\\:3000};
+\draw[->] (client) -- (nginx);
+\draw[->] (nginx) -- node[draw=none,above,sloped]{upstream activo} (blue);
+\draw[->] (nginx) -- (green);
+\draw[->] (blue) -- (api1);
+\draw[->] (green) -- (api2);
+\end{tikzpicture}
+\caption{Arquitectura de ejecución y cambio blue-green en EC2.}
+\label{fig:arquitectura}
+\end{figure}
+La Figura \ref{fig:arquitectura} muestra que solo Nginx publica el puerto HTTP. El segundo contenedor se prepara en paralelo y recibe tráfico después de superar el health check.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[node distance=0.3cm, every node/.style={draw,rounded corners,align=center,minimum height=0.8cm,text width=2.2cm}, >=Latex]
+\node (push) {Push o pull request a main};
+\node[right=of push] (test) {npm ci\\node:test + cobertura};
+\node[right=of test] (build) {Build de imagen\\Docker};
+\node[right=of build] (publish) {Docker Hub\\latest + SHA};
+\node[right=of publish] (deploy) {SSH a EC2\\health check + cambio};
+\draw[->] (push) -- (test);
+\draw[->] (test) -- (build);
+\draw[->] (build) -- (publish);
+\draw[->] (publish) -- (deploy);
+\end{tikzpicture}
+\caption{Etapas del workflow y condición de publicación/despliegue.}
+\label{fig:pipeline}
+\end{figure}
+La Figura \ref{fig:pipeline} resume las dependencias: ninguna imagen se publica si fallan las pruebas. Los pull requests ejecutan validación; publicar requiere un push a \texttt{main}, y desplegar requiere además habilitar la variable \texttt{ENABLE\_EC2\_DEPLOY}.
+
+\section{Resultados}
+Las pruebas locales se ejecutaron con el runner nativo de Node.js y Supertest sobre los diez recursos CRUD y el endpoint de salud. Se aprobaron 19 casos de prueba. El informe de cobertura agregado reportó 93.8\% de sentencias, 97.05\% de ramas y 93.8\% de líneas, por encima del mínimo del 70\%. El archivo de la aplicación que implementa las rutas alcanzó 100\% en estas métricas; la cobertura global incluye también el punto de entrada del servidor, que no se inicia en las pruebas de integración.
+
+\begin{figure}[H]
+\centering
+\begin{tabular}{lr}
+\toprule
+\textbf{Indicador local} & \textbf{Resultado} \\
+\midrule
+Operaciones CRUD implementadas & 60 \\
+Pruebas aprobadas & 19 de 19 \\
+Cobertura de sentencias & 93.8\% \\
+Cobertura de ramas & 97.05\% \\
+Cobertura de líneas & 93.8\% \\
+Umbral configurado & 70\% \\
+\bottomrule
+\end{tabular}
+\caption{Resultados medidos localmente con c8 y el runner de Node.js.}
+\label{fig:resultados}
+\end{figure}
+La Figura \ref{fig:resultados} presenta las mediciones locales obtenidas en esta versión. La construcción de la imagen y el despliegue real en Docker Hub y EC2 quedan pendientes hasta que el equipo configure su daemon Docker, sus credenciales y la instancia; no se atribuyen a este trabajo resultados externos que todavía no se han observado. Una vez configurados, deben anexarse capturas del workflow completado, los tags de la imagen y la respuesta HTTP pública.
+
+\section{Seguridad y limitaciones}
+Las credenciales se suministran mediante GitHub Secrets y no se guardan en los archivos del proyecto. La huella del host SSH se compara en la acción de despliegue para evitar confiar automáticamente en una clave recibida durante la conexión. El Security Group debe restringir el puerto 22 a las direcciones de administración y permitir el puerto 80 para clientes HTTP. La imagen ejecuta la aplicación como usuario no privilegiado y solo necesita exponer el puerto interno 3000.
+
+La limitación funcional más importante es el almacenamiento en memoria, que no sobrevive a reinicios y no proporciona transacciones ni aislamiento persistente. La configuración de ejemplo sirve para demostrar el flujo y no reemplaza una arquitectura de producción con base de datos, HTTPS, monitoreo, política de copias de seguridad y gestión formal de secretos. El cambio blue-green minimiza la interrupción, pero no constituye por sí solo una garantía contractual de disponibilidad.
+
+\section{Conclusiones}
+Se implementó un flujo reproducible que integra una API REST, pruebas automatizadas, cobertura mínima obligatoria, contenedorización y publicación de versiones identificables. La ejecución local verificó las sesenta operaciones CRUD y alcanzó coberturas superiores al 90\% en las cuatro métricas reportadas, por encima del umbral establecido. La identificación de las imágenes por SHA permite relacionar cada despliegue con el cambio exacto del repositorio y facilita reproducir una versión.
+
+La automatización de nube se diseñó con separación entre preparación y despliegue: el equipo conserva sus credenciales en GitHub Secrets, limita la exposición de puertos y valida la nueva instancia de la API antes de cambiar el tráfico. Para completar la demostración solicitada todavía se requiere crear Docker Hub y EC2, registrar sus valores privados y ejecutar un push a \texttt{main}; solo después podrán documentarse una URL pública y capturas reales del pipeline. Por último, la persistencia en memoria delimita el propósito académico del prototipo y debe sustituirse por un almacenamiento durable antes de usarlo como servicio real.
+
+\section{Fuentes de información}
+\begin{enumerate}
+  \item GitHub Docs. ``Understanding GitHub Actions''. \url{https://docs.github.com/en/actions/about-github-actions}. Consulta: 7 de octubre de 2026.
+  \item Docker Docs. ``Dockerfile reference''. \url{https://docs.docker.com/reference/dockerfile/}. Consulta: 7 de octubre de 2026.
+  \item Docker Docs. ``Build and push Docker images''. \url{https://docs.docker.com/build/ci/github-actions/}. Consulta: 7 de octubre de 2026.
+  \item Amazon Web Services. ``Amazon EC2 User Guide''. \url{https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/concepts.html}. Consulta: 7 de octubre de 2026.
+  \item Express. ``Express routing''. \url{https://expressjs.com/en/guide/routing.html}. Consulta: 7 de octubre de 2026.
+\end{enumerate}
+
+\end{document}
